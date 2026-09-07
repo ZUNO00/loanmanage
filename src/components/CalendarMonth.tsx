@@ -41,6 +41,7 @@ export function CalendarMonth({ debts, payments, onMarkPaid }: Props) {
   }
 
   const selectedOccurrences = selectedDay ? occurrencesOn(selectedDay) : []
+  const today = new Date()
 
   return (
     <div className="flex-1">
@@ -56,14 +57,32 @@ export function CalendarMonth({ debts, payments, onMarkPaid }: Props) {
         {cells.map((day, i) => {
           if (!day) return <div key={i} />
           const dayOccurrences = occurrencesOn(day)
-          const hasUnpaid = dayOccurrences.some((o) => !o.paid)
+          const hasUnpaidPayable = dayOccurrences.some((o) => !o.paid && !o.occurrence.isReceivable)
+          const hasUnpaidReceivable = dayOccurrences.some((o) => !o.paid && o.occurrence.isReceivable)
+          const totalAmount = dayOccurrences.reduce((sum, o) => sum + o.occurrence.amount, 0)
+          const isToday = day.toDateString() === today.toDateString()
+          const isSelected = selectedDay?.toDateString() === day.toDateString()
           return (
             <button
               key={i}
               onClick={() => setSelectedDay(day)}
-              className={`aspect-square rounded-lg p-1 text-left text-xs ${hasUnpaid ? 'bg-gradient-to-br from-urgent-from to-urgent-to text-white' : dayOccurrences.length ? 'bg-border text-text' : 'bg-surface text-text-muted'}`}
+              className={`aspect-square rounded-lg p-1 text-left text-[10px] ring-2 ${isSelected ? 'ring-text' : isToday ? 'ring-text-muted' : 'ring-transparent'} ${
+                hasUnpaidPayable
+                  ? 'bg-gradient-to-br from-urgent-from to-urgent-to text-white'
+                  : hasUnpaidReceivable
+                    ? 'bg-receivable text-bg'
+                    : dayOccurrences.length
+                      ? 'bg-border text-text'
+                      : 'bg-surface text-text-muted'
+              }`}
             >
-              {day.getDate()}
+              <div className="text-xs font-semibold">{day.getDate()}</div>
+              {dayOccurrences.length > 0 && (
+                <>
+                  <div className="truncate">{dayOccurrences[0].debt.name}</div>
+                  <div className="truncate">{formatMoney(totalAmount)}đ</div>
+                </>
+              )}
             </button>
           )
         })}

@@ -10,7 +10,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 export async function subscribeToPush(
   supabase: SupabaseClient,
   userId: string,
-): Promise<'subscribed' | 'unsupported' | 'denied'> {
+): Promise<'subscribed' | 'unsupported' | 'denied' | 'failed'> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported'
 
   const permission = await Notification.requestPermission()
@@ -33,12 +33,13 @@ export async function subscribeToPush(
     .maybeSingle()
 
   if (!already) {
-    await supabase.from('push_subscriptions').insert({
+    const { error } = await supabase.from('push_subscriptions').insert({
       user_id: userId,
       endpoint: json.endpoint!,
       p256dh: json.keys!.p256dh,
       auth: json.keys!.auth,
     })
+    if (error) return 'failed'
   }
   return 'subscribed'
 }

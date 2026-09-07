@@ -12,10 +12,15 @@ export function DebtList({ category }: { category: 'bank' | 'peer' }) {
   const { session } = useAuth()
   const [debts, setDebts] = useState<Debt[]>([])
   const [editing, setEditing] = useState<Debt | 'new' | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const supabase = getSupabaseClient()
 
   async function refresh() {
-    setDebts(await listDebts(supabase, category))
+    try {
+      setDebts(await listDebts(supabase, category))
+    } catch {
+      setError('Không tải được danh sách, thử tải lại trang.')
+    }
   }
 
   useEffect(() => {
@@ -25,24 +30,36 @@ export function DebtList({ category }: { category: 'bank' | 'peer' }) {
   }, [category])
 
   async function handleSubmit(values: Partial<Debt>) {
-    await upsertDebt(supabase, { ...values, user_id: session!.user.id })
-    setEditing(null)
-    await refresh()
+    try {
+      await upsertDebt(supabase, { ...values, user_id: session!.user.id })
+      setEditing(null)
+      await refresh()
+    } catch {
+      setError('Không lưu được, thử lại.')
+    }
   }
 
   async function handleToggleActive(debt: Debt) {
-    // Must send the full row, not just {id, user_id, is_active}: Postgres
-    // builds the candidate INSERT tuple for ON CONFLICT DO UPDATE and
-    // checks NOT NULL constraints (type, name) on it before the conflict
-    // path even kicks in, so a partial upsert missing those columns fails
-    // with a not-null violation even though the row already exists.
-    await upsertDebt(supabase, { ...debt, is_active: !debt.is_active })
-    await refresh()
+    try {
+      // Must send the full row, not just {id, user_id, is_active}: Postgres
+      // builds the candidate INSERT tuple for ON CONFLICT DO UPDATE and
+      // checks NOT NULL constraints (type, name) on it before the conflict
+      // path even kicks in, so a partial upsert missing those columns fails
+      // with a not-null violation even though the row already exists.
+      await upsertDebt(supabase, { ...debt, is_active: !debt.is_active })
+      await refresh()
+    } catch {
+      setError('Không cập nhật được, thử lại.')
+    }
   }
 
   async function handleDelete(id: string) {
-    await deleteDebt(supabase, id)
-    await refresh()
+    try {
+      await deleteDebt(supabase, id)
+      await refresh()
+    } catch {
+      setError('Không xóa được, thử lại.')
+    }
   }
 
   if (editing) {
@@ -58,6 +75,7 @@ export function DebtList({ category }: { category: 'bank' | 'peer' }) {
 
   return (
     <div className="flex flex-1 flex-col gap-3">
+      {error && <p className="text-sm text-payable">{error}</p>}
       <button onClick={() => setEditing('new')} className="self-start rounded-xl bg-gradient-to-r from-urgent-from to-urgent-to px-4 py-2 font-semibold text-white">
         + Thêm khoản
       </button>

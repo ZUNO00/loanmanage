@@ -5,6 +5,7 @@ import {
   getRelevantOccurrence,
   getReminderThresholdMs,
   paymentKey,
+  shouldRemindNow,
 } from './schedule'
 import type { Debt } from './types'
 
@@ -166,5 +167,37 @@ describe('getReminderThresholdMs', () => {
     const occ = getOccurrenceForPeriod(debt, 2026, 8)!
     const threshold = getReminderThresholdMs(debt, occ)
     expect(occ.dueAt.getTime() - threshold).toBe(24 * 60 * 60 * 1000)
+  })
+})
+
+describe('shouldRemindNow', () => {
+  it('credit_card: false well before the 2-day threshold, true once inside it', () => {
+    const debt = baseDebt({ due_day: 20, created_at: '2026-09-01T00:00:00Z' })
+    expect(shouldRemindNow(debt, new Set(), new Date(2026, 8, 15))).toBe(false)
+    expect(shouldRemindNow(debt, new Set(), new Date(2026, 8, 19))).toBe(true)
+  })
+
+  it('loan: false well before the 24h threshold, true once inside it', () => {
+    const debt = baseDebt({ type: 'loan', due_day: 20, due_time: '16:00', created_at: '2026-09-01T00:00:00Z' })
+    expect(shouldRemindNow(debt, new Set(), new Date(2026, 8, 18, 16, 0))).toBe(false)
+    expect(shouldRemindNow(debt, new Set(), new Date(2026, 8, 19, 17, 0))).toBe(true)
+  })
+
+  it('lend_out (recurring): same 24h threshold as loan', () => {
+    const debt = baseDebt({ type: 'lend_out', repayment_mode: 'recurring', amount: null, principal_amount: 5000000, interest_rate_pct: 2, due_day: 20, due_time: '16:00', created_at: '2026-09-01T00:00:00Z' })
+    expect(shouldRemindNow(debt, new Set(), new Date(2026, 8, 19, 15, 0))).toBe(false)
+    expect(shouldRemindNow(debt, new Set(), new Date(2026, 8, 19, 17, 0))).toBe(true)
+  })
+
+  it('borrow_in (one_time): same 24h threshold', () => {
+    const debt = baseDebt({ type: 'borrow_in', repayment_mode: 'one_time', amount: null, principal_amount: 5000000, interest_rate_pct: 2, start_date: '2026-08-01', due_date: '2026-09-20', due_time: '16:00', created_at: '2026-08-01T00:00:00Z' })
+    expect(shouldRemindNow(debt, new Set(), new Date(2026, 8, 19, 15, 0))).toBe(false)
+    expect(shouldRemindNow(debt, new Set(), new Date(2026, 8, 19, 17, 0))).toBe(true)
+  })
+
+  it('stops once the relevant occurrence is paid, even well past its threshold', () => {
+    const debt = baseDebt({ due_day: 20, created_at: '2026-09-01T00:00:00Z' })
+    const paid = new Set([paymentKey('d1', '2026-09')])
+    expect(shouldRemindNow(debt, paid, new Date(2026, 8, 25))).toBe(false)
   })
 })

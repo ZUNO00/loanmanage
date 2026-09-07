@@ -22,6 +22,12 @@ export function SummaryCards({ summary }: { summary: DashboardSummary }) {
         <p className="text-xs text-text-muted">Lãi phải trả/tháng</p>
         <p className="text-lg font-bold text-payable">{formatMoney(summary.monthlyInterestPayable)}đ</p>
       </div>
+      <div className="col-span-2 rounded-xl bg-surface p-3">
+        <p className="text-xs text-text-muted">Chênh lệch (thu − trả)</p>
+        <p className={`text-lg font-bold ${summary.net >= 0 ? 'text-receivable' : 'text-payable'}`}>
+          {summary.net >= 0 ? '+' : ''}{formatMoney(summary.net)}đ
+        </p>
+      </div>
       {summary.overdue.length > 0 && (
         <div className="col-span-2 rounded-xl border border-payable bg-surface p-3">
           <p className="text-xs text-payable">⚠ {summary.overdue.length} khoản quá hạn</p>

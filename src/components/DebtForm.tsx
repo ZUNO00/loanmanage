@@ -39,6 +39,7 @@ export function DebtForm({ category, initial, onSubmit, onCancel }: Props) {
   const [dueDate, setDueDate] = useState(initial?.due_date ?? '')
   const [transcript, setTranscript] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   function applyDictation(text: string) {
     setTranscript(text)
@@ -74,6 +75,7 @@ export function DebtForm({ category, initial, onSubmit, onCancel }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
+    setError(null)
     try {
       const isPeer = category === 'peer'
       await onSubmit({
@@ -92,8 +94,10 @@ export function DebtForm({ category, initial, onSubmit, onCancel }: Props) {
         repayment_mode: isPeer ? repaymentMode : null,
         start_date: isPeer && repaymentMode === 'one_time' ? startDate || null : null,
         due_date: isPeer && repaymentMode === 'one_time' ? dueDate || null : null,
-        is_active: true,
+        is_active: initial?.is_active ?? true,
       })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Có lỗi xảy ra, thử lại.')
     } finally {
       setSubmitting(false)
     }
@@ -155,6 +159,7 @@ export function DebtForm({ category, initial, onSubmit, onCancel }: Props) {
       <input className="rounded-lg bg-bg px-3 py-2 text-text" placeholder="Số tài khoản" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
       <input className="rounded-lg bg-bg px-3 py-2 text-text" placeholder="Chủ tài khoản" value={accountHolder} onChange={(e) => setAccountHolder(e.target.value)} />
 
+      {error && <p className="text-sm text-payable">{error}</p>}
       <div className="flex gap-2">
         <button disabled={submitting} className="flex-1 rounded-xl bg-gradient-to-r from-urgent-from to-urgent-to py-2 font-semibold text-white disabled:opacity-50" type="submit">
           Lưu

@@ -131,3 +131,12 @@ export function getReminderThresholdMs(debt: Debt, occurrence: Occurrence): numb
   const oneDay = 24 * 60 * 60 * 1000
   return occurrence.dueAt.getTime() - (debt.type === 'credit_card' ? 2 * oneDay : oneDay)
 }
+
+/** Whether a push reminder should fire right now for this debt — the same
+ * decision the reminder Edge Function makes (see its ponytail note): there's
+ * a relevant unpaid occurrence, and "now" has reached its threshold. */
+export function shouldRemindNow(debt: Debt, paidKeys: Set<string>, now: Date = new Date()): boolean {
+  const occurrence = getRelevantOccurrence(debt, paidKeys, now)
+  if (!occurrence) return false
+  return now.getTime() >= getReminderThresholdMs(debt, occurrence)
+}

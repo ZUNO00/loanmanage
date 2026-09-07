@@ -23,6 +23,7 @@ export function TopNav() {
     const result = await subscribeToPush(getSupabaseClient(), session.user.id)
     if (result === 'denied') alert('Bạn đã từ chối quyền thông báo — bật lại trong cài đặt trình duyệt nếu muốn nhận nhắc.')
     if (result === 'unsupported') alert('Trình duyệt này không hỗ trợ thông báo đẩy.')
+    if (result === 'failed') alert('Không lưu được đăng ký thông báo, thử lại sau.')
   }
 
   async function handleLogout() {

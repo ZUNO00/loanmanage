@@ -10,6 +10,7 @@ import { getSupabaseClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/AuthProvider'
 import { WeekStrip } from '@/components/WeekStrip'
 import { SummaryCards } from '@/components/SummaryCards'
+import { CalendarMonth } from '@/components/CalendarMonth'
 
 function startOfDay(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
@@ -20,12 +21,17 @@ export default function HomePage() {
   const [debts, setDebts] = useState<Debt[]>([])
   const [payments, setPayments] = useState<DebtPayment[]>([])
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()))
+  const [error, setError] = useState<string | null>(null)
   const supabase = getSupabaseClient()
 
   async function refresh() {
-    const [d, p] = await Promise.all([listAllActiveDebts(supabase), listPayments(supabase)])
-    setDebts(d)
-    setPayments(p)
+    try {
+      const [d, p] = await Promise.all([listAllActiveDebts(supabase), listPayments(supabase)])
+      setDebts(d)
+      setPayments(p)
+    } catch {
+      setError('Không tải được dữ liệu, thử tải lại trang.')
+    }
   }
 
   useEffect(() => {
@@ -54,13 +60,19 @@ export default function HomePage() {
   const summary = useMemo(() => computeDashboardSummary(debts, paidKeys), [debts, paidKeys])
 
   async function handleMarkPaid(debtId: string, period: string) {
-    await markPaid(supabase, debtId, session!.user.id, period)
-    await refresh()
+    try {
+      setError(null)
+      await markPaid(supabase, debtId, session!.user.id, period)
+      await refresh()
+    } catch {
+      setError('Không đánh dấu đã đóng được, thử lại.')
+    }
   }
 
   return (
     <div className="flex flex-1 flex-col gap-4 lg:flex-row">
       <div className="flex flex-1 flex-col gap-4">
+        {error && <p className="text-sm text-payable">{error}</p>}
         <WeekStrip days={weekDays} selected={selectedDay} onSelect={setSelectedDay} />
         <div className="flex flex-col gap-2">
           {selectedOccurrences.length === 0 && <p className="text-text-muted">Không có khoản nào ngày này.</p>}
@@ -85,6 +97,7 @@ export default function HomePage() {
             </div>
           ))}
         </div>
+        <CalendarMonth debts={debts} payments={payments} onMarkPaid={handleMarkPaid} />
       </div>
       <div className="lg:sticky lg:top-4 lg:h-fit lg:w-80">
         <SummaryCards summary={summary} />
