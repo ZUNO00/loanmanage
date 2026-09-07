@@ -6,6 +6,7 @@ function slugify(displayName: string): string {
   return displayName
     .trim()
     .toLowerCase()
+    .replace(/đ/g, 'd') // NFD below doesn't decompose Đ/đ — it needs an explicit swap
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]/g, '')
@@ -28,10 +29,12 @@ export async function signUpWithDisplayName(
       const { error: profileError } = await supabase
         .from('profiles')
         .insert({ id: userId, login_id: loginId, display_name: displayName })
-      if (profileError) throw profileError
+      if (profileError) throw new Error('Không lưu được thông tin tài khoản, vui lòng thử lại.')
       return { loginId }
     }
-    if (!/already registered|already exists/i.test(error.message)) throw error
+    if (!/already registered|already exists/i.test(error.message)) {
+      throw new Error('Không tạo được tài khoản, vui lòng thử lại.')
+    }
   }
   throw new Error('Không tạo được tài khoản, thử lại sau.')
 }
