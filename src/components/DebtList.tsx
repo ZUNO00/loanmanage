@@ -30,13 +30,13 @@ export function DebtList({ category }: { category: 'bank' | 'peer' }) {
   }, [category])
 
   async function handleSubmit(values: Partial<Debt>) {
-    try {
-      await upsertDebt(supabase, { ...values, user_id: session!.user.id })
-      setEditing(null)
-      await refresh()
-    } catch {
-      setError('Không lưu được, thử lại.')
-    }
+    // No try/catch here: a rejection must propagate to DebtForm's own
+    // catch, which is what's actually on screen while editing (this
+    // component early-returns to <DebtForm> below, so an error state set
+    // here would render into nothing visible).
+    await upsertDebt(supabase, { ...values, user_id: session!.user.id })
+    setEditing(null)
+    await refresh()
   }
 
   async function handleToggleActive(debt: Debt) {
