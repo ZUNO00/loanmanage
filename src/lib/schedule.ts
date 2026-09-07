@@ -76,13 +76,17 @@ export function getRelevantOccurrence(debt: Debt, paidKeys: Set<string>, now: Da
     const occ = getOccurrenceForPeriod(debt, y, m - 1)
     return occ && !paidKeys.has(paymentKey(debt.id, occ.period)) ? occ : null
   }
+  // Check the previous month FIRST and independently of whether the
+  // current month is paid — otherwise a debt paid promptly this month
+  // while last month's occurrence was somehow missed would report nothing
+  // due at all, hiding a genuinely unpaid period.
+  const prevRef = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const prevMonth = getOccurrenceForPeriod(debt, prevRef.getFullYear(), prevRef.getMonth())
+  if (prevMonth && prevMonth.dueAt >= createdAt && !paidKeys.has(paymentKey(debt.id, prevMonth.period))) {
+    return prevMonth
+  }
   const thisMonth = getOccurrenceForPeriod(debt, now.getFullYear(), now.getMonth())
   if (thisMonth && !paidKeys.has(paymentKey(debt.id, thisMonth.period))) {
-    const prevRef = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const prevMonth = getOccurrenceForPeriod(debt, prevRef.getFullYear(), prevRef.getMonth())
-    if (prevMonth && prevMonth.dueAt >= createdAt && !paidKeys.has(paymentKey(debt.id, prevMonth.period))) {
-      return prevMonth
-    }
     return thisMonth
   }
   return null

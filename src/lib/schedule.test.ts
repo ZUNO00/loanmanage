@@ -119,6 +119,13 @@ describe('getRelevantOccurrence', () => {
   it('returns null for inactive debts', () => {
     expect(getRelevantOccurrence(baseDebt({ is_active: false }), new Set(), new Date(2026, 8, 5))).toBeNull()
   })
+
+  it('surfaces an unpaid previous month even when the current month is already paid', () => {
+    const now = new Date(2026, 9, 3) // Oct 3
+    const paid = new Set([paymentKey('d1', '2026-10')]) // this month paid, last month is not
+    const occ = getRelevantOccurrence(baseDebt(), paid, now)
+    expect(occ?.period).toBe('2026-09')
+  })
 })
 
 describe('getOccurrencesInRange', () => {
