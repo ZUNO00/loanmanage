@@ -42,3 +42,6 @@ next-env.d.ts
 
 # superpowers brainstorm scratch (mockups, not source)
 .superpowers/
+
+# Local Netlify folder
+.netlify
