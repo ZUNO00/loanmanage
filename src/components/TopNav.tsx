@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { subscribeToPush } from '@/lib/push'
+import { useAuth } from '@/components/AuthProvider'
 
 const LINKS = [
   { href: '/', label: 'Trang chủ' },
@@ -14,6 +16,14 @@ const LINKS = [
 export function TopNav() {
   const pathname = usePathname()
   const router = useRouter()
+  const { session } = useAuth()
+
+  async function handleEnableNotifications() {
+    if (!session) return
+    const result = await subscribeToPush(getSupabaseClient(), session.user.id)
+    if (result === 'denied') alert('Bạn đã từ chối quyền thông báo — bật lại trong cài đặt trình duyệt nếu muốn nhận nhắc.')
+    if (result === 'unsupported') alert('Trình duyệt này không hỗ trợ thông báo đẩy.')
+  }
 
   async function handleLogout() {
     await getSupabaseClient().auth.signOut()
@@ -31,7 +41,10 @@ export function TopNav() {
           {link.label}
         </Link>
       ))}
-      <button onClick={handleLogout} className="ml-auto rounded-lg px-3 py-1.5 text-sm text-text-muted hover:text-text">
+      <button onClick={handleEnableNotifications} className="ml-auto rounded-lg px-3 py-1.5 text-sm text-text-muted hover:text-text">
+        🔔 Bật thông báo
+      </button>
+      <button onClick={handleLogout} className="rounded-lg px-3 py-1.5 text-sm text-text-muted hover:text-text">
         Đăng xuất
       </button>
     </nav>
