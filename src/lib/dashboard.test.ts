@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { computeDashboardSummary } from './dashboard'
+import { paymentKey } from './schedule'
 import type { Debt } from './types'
 
 function debt(overrides: Partial<Debt>): Debt {
@@ -53,5 +54,32 @@ describe('computeDashboardSummary', () => {
     const debts = [debt({ id: 'paid', type: 'loan', amount: 1000000, due_day: 1, due_time: '08:00', created_at: '2026-09-01T00:00:00Z' })]
     const summary = computeDashboardSummary(debts, new Set(['paid:2026-09']), now)
     expect(summary.overdue).toHaveLength(0)
+  })
+
+  it('counts a one_time debt\'s interest in the month its due_date falls in', () => {
+    const debts = [
+      debt({
+        id: 'onetime', type: 'borrow_in', repayment_mode: 'one_time',
+        principal_amount: 5000000, interest_rate_pct: 2,
+        start_date: '2026-08-01', due_date: '2026-09-20',
+      }),
+    ]
+    const summary = computeDashboardSummary(debts, new Set(), now)
+    // 2026-08-01 -> 2026-09-20 spans 2 months (Sep 20 > Aug 1 rounds up)
+    expect(summary.monthlyInterestPayable).toBe(5000000 * 0.02 * 2)
+  })
+
+  it('matches schedule.ts\'s rounded amount for a non-integer interest product', () => {
+    const debts = [
+      debt({ id: 'frac', type: 'lend_out', repayment_mode: 'recurring', principal_amount: 333333, interest_rate_pct: 3, due_day: 15 }),
+    ]
+    const summary = computeDashboardSummary(debts, new Set(), now)
+    expect(summary.monthlyInterestReceivable).toBe(10000) // Math.round(9999.99)
+  })
+
+  it('excludes an already-paid occurrence from this month\'s totals', () => {
+    const debts = [debt({ id: 'paidcard', type: 'credit_card', amount: 3500000, due_day: 20, created_at: '2026-09-01T00:00:00Z' })]
+    const summary = computeDashboardSummary(debts, new Set([paymentKey('paidcard', '2026-09')]), now)
+    expect(summary.totalPayableThisMonth).toBe(0)
   })
 })
