@@ -527,13 +527,23 @@ describe('getRelevantOccurrence', () => {
   })
 
   it('returns null once a one_time debt is paid', () => {
-    const debt = baseDebt({ repayment_mode: 'one_time', due_date: '2026-09-09' })
+    const debt = baseDebt({ type: 'lend_out', repayment_mode: 'one_time', due_date: '2026-09-09' })
     const paid = new Set([paymentKey('d1', '2026-09-09')])
     expect(getRelevantOccurrence(debt, paid, new Date(2026, 8, 5))).toBeNull()
   })
 
   it('returns null for inactive debts', () => {
     expect(getRelevantOccurrence(baseDebt({ is_active: false }), new Set(), new Date(2026, 8, 5))).toBeNull()
+  })
+
+  it('surfaces the current month even if its due day predates created_at', () => {
+    // Added Sep 15, after this cycle's Sep 9 due day already passed — the
+    // bill is still real and unpaid, so it must surface. Only the PREVIOUS
+    // month's lookback is gated by created_at, never the current month's.
+    const now = new Date(2026, 8, 20) // Sep 20
+    const debt = baseDebt({ due_day: 9, created_at: '2026-09-15T00:00:00Z' })
+    const occ = getRelevantOccurrence(debt, new Set(), now)
+    expect(occ?.period).toBe('2026-09')
   })
 })
 
@@ -641,8 +651,14 @@ export function getOccurrenceForPeriod(debt: Debt, year: number, monthIndex0: nu
 
 /** The occurrence that should currently be surfaced on the dashboard/for
  * reminders: for recurring debts, the earliest of {previous month, current
- * month} that isn't yet paid AND isn't from before the debt existed; for
- * one_time debts, the single due date if unpaid.
+ * month} that isn't yet paid; for one_time debts, the single due date if
+ * unpaid. The current month's occurrence is ALWAYS a candidate regardless
+ * of `created_at` — it's the live cycle, whether the user added tracking
+ * for it on the 1st or the 28th. `created_at` only gates the PREVIOUS
+ * month's lookback, so a debt added mid-September doesn't get told August
+ * was also overdue — August was never a cycle this record could have
+ * tracked, but September's due date, even if already past, is real and
+ * relevant the moment the debt exists.
  * ponytail: only looks back 1 month, not an unbounded scan — reminders nag
  * every 15min so nothing can silently go unpaid for a long stretch without
  * the user noticing; extend the lookback if that assumption ever breaks. */
@@ -655,13 +671,17 @@ export function getRelevantOccurrence(debt: Debt, paidKeys: Set<string>, now: Da
     const occ = getOccurrenceForPeriod(debt, y, m - 1)
     return occ && !paidKeys.has(paymentKey(debt.id, occ.period)) ? occ : null
   }
+  // Check the previous month FIRST and independently of whether the
+  // current month is paid — otherwise a debt paid promptly this month
+  // while last month's occurrence was somehow missed would report nothing
+  // due at all, hiding a genuinely unpaid period.
+  const prevRef = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const prevMonth = getOccurrenceForPeriod(debt, prevRef.getFullYear(), prevRef.getMonth())
+  if (prevMonth && prevMonth.dueAt >= createdAt && !paidKeys.has(paymentKey(debt.id, prevMonth.period))) {
+    return prevMonth
+  }
   const thisMonth = getOccurrenceForPeriod(debt, now.getFullYear(), now.getMonth())
   if (thisMonth && !paidKeys.has(paymentKey(debt.id, thisMonth.period))) {
-    const prevRef = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const prevMonth = getOccurrenceForPeriod(debt, prevRef.getFullYear(), prevRef.getMonth())
-    if (prevMonth && prevMonth.dueAt >= createdAt && !paidKeys.has(paymentKey(debt.id, prevMonth.period))) {
-      return prevMonth
-    }
     return thisMonth
   }
   return null
@@ -765,6 +785,17 @@ describe('parseDictation', () => {
     expect(result.amount).toBeUndefined()
     expect(result.date).toBeUndefined()
   })
+
+  it('parses the "củ" amount unit (worth 1,000,000)', () => {
+    expect(parseDictation('nợ 5 củ').amount).toBe(5000000)
+  })
+
+  it('does not misclassify an ordinary loan sentence that merely contains "cho" elsewhere', () => {
+    const result = parseDictation(
+      'vay ngân hàng Vietcombank 20 triệu, nhớ đừng quên trả cho đúng hẹn',
+    )
+    expect(result.type).toBe('loan')
+  })
 })
 ```
 
@@ -791,12 +822,23 @@ export function parseDictation(text: string): ParsedDictation {
   const result: ParsedDictation = {}
   const lower = text.toLowerCase()
 
+  // "cho <tên> vay/mượn" within a few words — not a bare .includes('cho'),
+  // since "cho" is an extremely common function word (e.g. "trả cho đúng
+  // hẹn") that would otherwise misclassify ordinary loan sentences that
+  // merely contain it somewhere unrelated.
+  const lendOutMatch = /\bcho\s+(?:\S+\s+){0,3}(?:vay|mượn)\b/.test(lower)
   if (lower.includes('thẻ tín dụng')) result.type = 'credit_card'
-  else if (lower.includes('cho') && (lower.includes('vay') || lower.includes('mượn'))) result.type = 'lend_out'
+  else if (lendOutMatch) result.type = 'lend_out'
   else if (lower.includes('mượn')) result.type = 'borrow_in'
   else if (lower.includes('vay') || lower.includes('nợ')) result.type = 'loan'
 
-  const amountMatch = lower.match(/(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngàn|tr|triệu|củ)\b/)
+  // Trailing boundary uses a lookahead instead of `\b` — `\b` only anchors
+  // at a transition to/from a `\w` character, and Vietnamese diacritics
+  // (the "ủ" in "củ", "riệu" in "triệu") aren't `\w`, so `\b` silently
+  // fails to match right after them. The lookahead just checks "not
+  // immediately followed by another letter/digit", which works regardless
+  // of what precedes it.
+  const amountMatch = lower.match(/(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngàn|tr|triệu|củ)(?![a-zA-ZÀ-ỹ0-9])/)
   if (amountMatch) {
     const num = Number(amountMatch[1].replace(',', '.'))
     const isThousand = amountMatch[2] === 'k' || amountMatch[2] === 'nghìn' || amountMatch[2] === 'ngàn'
@@ -869,6 +911,7 @@ function slugify(displayName: string): string {
   return displayName
     .trim()
     .toLowerCase()
+    .replace(/đ/g, 'd') // NFD below doesn't decompose Đ/đ — it needs an explicit swap
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]/g, '')
@@ -891,10 +934,12 @@ export async function signUpWithDisplayName(
       const { error: profileError } = await supabase
         .from('profiles')
         .insert({ id: userId, login_id: loginId, display_name: displayName })
-      if (profileError) throw profileError
+      if (profileError) throw new Error('Không lưu được thông tin tài khoản, vui lòng thử lại.')
       return { loginId }
     }
-    if (!/already registered|already exists/i.test(error.message)) throw error
+    if (!/already registered|already exists/i.test(error.message)) {
+      throw new Error('Không tạo được tài khoản, vui lòng thử lại.')
+    }
   }
   throw new Error('Không tạo được tài khoản, thử lại sau.')
 }
@@ -1366,15 +1411,15 @@ export function DebtForm({ category, initial, onSubmit, onCancel }: Props) {
   const options = category === 'bank' ? BANK_OPTIONS : PEER_OPTIONS
   const [type, setType] = useState<DebtType>(initial?.type ?? options[0].value)
   const [name, setName] = useState(initial?.name ?? '')
-  const [amountText, setAmountText] = useState(initial?.amount ? formatMoneyInput(String(initial.amount)) : '')
+  const [amountText, setAmountText] = useState(initial?.amount != null ? formatMoneyInput(String(initial.amount)) : '')
   const [dueDay, setDueDay] = useState(initial?.due_day ? String(initial.due_day) : '')
   const [dueTime, setDueTime] = useState(initial?.due_time?.slice(0, 5) ?? '')
   const [accountNumber, setAccountNumber] = useState(initial?.account_number ?? '')
   const [bankName, setBankName] = useState(initial?.bank_name ?? '')
   const [accountHolder, setAccountHolder] = useState(initial?.account_holder ?? '')
   const [counterpartyName, setCounterpartyName] = useState(initial?.counterparty_name ?? '')
-  const [principalText, setPrincipalText] = useState(initial?.principal_amount ? formatMoneyInput(String(initial.principal_amount)) : '')
-  const [ratePct, setRatePct] = useState(initial?.interest_rate_pct ? String(initial.interest_rate_pct) : '')
+  const [principalText, setPrincipalText] = useState(initial?.principal_amount != null ? formatMoneyInput(String(initial.principal_amount)) : '')
+  const [ratePct, setRatePct] = useState(initial?.interest_rate_pct != null ? String(initial.interest_rate_pct) : '')
   const [repaymentMode, setRepaymentMode] = useState<RepaymentMode>(initial?.repayment_mode ?? 'recurring')
   const [startDate, setStartDate] = useState(initial?.start_date ?? '')
   const [dueDate, setDueDate] = useState(initial?.due_date ?? '')
@@ -1571,7 +1616,12 @@ export function DebtList({ category }: { category: 'bank' | 'peer' }) {
   }
 
   async function handleToggleActive(debt: Debt) {
-    await upsertDebt(supabase, { id: debt.id, user_id: debt.user_id, is_active: !debt.is_active })
+    // Must send the full row, not just {id, user_id, is_active}: Postgres
+    // builds the candidate INSERT tuple for ON CONFLICT DO UPDATE and
+    // checks NOT NULL constraints (type, name) on it before the conflict
+    // path even kicks in, so a partial upsert missing those columns fails
+    // with a not-null violation even though the row already exists.
+    await upsertDebt(supabase, { ...debt, is_active: !debt.is_active })
     await refresh()
   }
 
@@ -1683,6 +1733,7 @@ Create `src/lib/dashboard.test.ts`:
 ```ts
 import { describe, expect, it } from 'vitest'
 import { computeDashboardSummary } from './dashboard'
+import { paymentKey } from './schedule'
 import type { Debt } from './types'
 
 function debt(overrides: Partial<Debt>): Debt {
@@ -1731,9 +1782,38 @@ describe('computeDashboardSummary', () => {
   })
 
   it('excludes paid occurrences from overdue', () => {
-    const debts = [debt({ id: 'paid', type: 'loan', amount: 1000000, due_day: 1, due_time: '08:00' })]
+    // created_at this same month: no earlier period could legitimately be
+    // overdue, so paying the current period must clear the debt entirely.
+    const debts = [debt({ id: 'paid', type: 'loan', amount: 1000000, due_day: 1, due_time: '08:00', created_at: '2026-09-01T00:00:00Z' })]
     const summary = computeDashboardSummary(debts, new Set(['paid:2026-09']), now)
     expect(summary.overdue).toHaveLength(0)
+  })
+
+  it('counts a one_time debt\'s interest in the month its due_date falls in', () => {
+    const debts = [
+      debt({
+        id: 'onetime', type: 'borrow_in', repayment_mode: 'one_time',
+        principal_amount: 5000000, interest_rate_pct: 2,
+        start_date: '2026-08-01', due_date: '2026-09-20',
+      }),
+    ]
+    const summary = computeDashboardSummary(debts, new Set(), now)
+    // 2026-08-01 -> 2026-09-20 spans 2 months (Sep 20 > Aug 1 rounds up)
+    expect(summary.monthlyInterestPayable).toBe(5000000 * 0.02 * 2)
+  })
+
+  it('matches schedule.ts\'s rounded amount for a non-integer interest product', () => {
+    const debts = [
+      debt({ id: 'frac', type: 'lend_out', repayment_mode: 'recurring', principal_amount: 333333, interest_rate_pct: 3, due_day: 15 }),
+    ]
+    const summary = computeDashboardSummary(debts, new Set(), now)
+    expect(summary.monthlyInterestReceivable).toBe(10000) // Math.round(333333 * 3 / 100) = Math.round(9999.99)
+  })
+
+  it('excludes an already-paid occurrence from this month\'s totals', () => {
+    const debts = [debt({ id: 'paidcard', type: 'credit_card', amount: 3500000, due_day: 20, created_at: '2026-09-01T00:00:00Z' })]
+    const summary = computeDashboardSummary(debts, new Set([paymentKey('paidcard', '2026-09')]), now)
+    expect(summary.totalPayableThisMonth).toBe(0)
   })
 })
 ```
@@ -1747,7 +1827,7 @@ Expected: FAIL — `Cannot find module './dashboard'`
 
 ```ts
 import type { Debt } from './types'
-import { getOccurrencesInRange, getRelevantOccurrence, paymentKey, type Occurrence } from './schedule'
+import { getOccurrenceForPeriod, getOccurrencesInRange, getRelevantOccurrence, paymentKey, type Occurrence } from './schedule'
 
 export interface DashboardSummary {
   totalPayableThisMonth: number
@@ -1763,20 +1843,32 @@ export function computeDashboardSummary(debts: Debt[], paidKeys: Set<string>, no
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
   const thisMonth = getOccurrencesInRange(debts, paidKeys, monthStart, monthEnd)
 
+  // Only unpaid occurrences count toward "still owed this month" — a bill
+  // paid on the 2nd shouldn't keep inflating what's left to pay/collect
+  // for the rest of the month.
   let totalPayableThisMonth = 0
   let totalReceivableThisMonth = 0
-  for (const { debt, occurrence } of thisMonth) {
+  for (const { occurrence, paid } of thisMonth) {
+    if (paid) continue
     if (occurrence.isReceivable) totalReceivableThisMonth += occurrence.amount
     else totalPayableThisMonth += occurrence.amount
   }
 
+  // Reuse getOccurrenceForPeriod (the same canonical, rounded calculation
+  // the calendar/overdue list use) instead of re-deriving the interest
+  // formula here — that would silently drift from schedule.ts's rounding
+  // for non-integer products, and would miss one_time debts entirely
+  // (their whole accrued interest counts in the month their due_date
+  // falls in, per spec, not just recurring debts).
   let monthlyInterestReceivable = 0
   let monthlyInterestPayable = 0
   for (const debt of debts) {
-    if (!debt.is_active || debt.repayment_mode !== 'recurring') continue
-    const interest = ((debt.principal_amount ?? 0) * (debt.interest_rate_pct ?? 0)) / 100
+    if (!debt.is_active || (debt.type !== 'lend_out' && debt.type !== 'borrow_in')) continue
+    const occ = getOccurrenceForPeriod(debt, now.getFullYear(), now.getMonth())
+    if (!occ) continue
+    const interest = debt.repayment_mode === 'one_time' ? occ.amount - (debt.principal_amount ?? 0) : occ.amount
     if (debt.type === 'lend_out') monthlyInterestReceivable += interest
-    if (debt.type === 'borrow_in') monthlyInterestPayable += interest
+    else monthlyInterestPayable += interest
   }
 
   // Reuse getRelevantOccurrence (not a raw range scan) so each debt
@@ -2223,7 +2315,11 @@ self.addEventListener('notificationclick', (event) => {
 ```ts
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+// Return type is Uint8Array<ArrayBuffer>, not bare Uint8Array — the DOM
+// lib's BufferSource (which applicationServerKey needs) is invariant on
+// ArrayBuffer, and the wider default generic doesn't satisfy it under
+// this TypeScript version.
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
   const rawData = atob(base64)
@@ -2409,13 +2505,11 @@ function relevantOccurrence(debt: Debt, paidPeriods: Set<string>, now: Date) {
     const occ = occurrenceForPeriod(debt, y, m - 1)
     return occ && !paidPeriods.has(occ.period) ? occ : null
   }
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const prevMonth = occurrenceForPeriod(debt, prev.getFullYear(), prev.getMonth())
+  if (prevMonth && prevMonth.dueAt >= createdAt && !paidPeriods.has(prevMonth.period)) return prevMonth
   const thisMonth = occurrenceForPeriod(debt, now.getFullYear(), now.getMonth())
-  if (thisMonth && !paidPeriods.has(thisMonth.period)) {
-    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const prevMonth = occurrenceForPeriod(debt, prev.getFullYear(), prev.getMonth())
-    if (prevMonth && prevMonth.dueAt >= createdAt && !paidPeriods.has(prevMonth.period)) return prevMonth
-    return thisMonth
-  }
+  if (thisMonth && !paidPeriods.has(thisMonth.period)) return thisMonth
   return null
 }
 
@@ -2592,18 +2686,92 @@ Expected: "Ready" log, no compile errors.
   `sessionStorage` is used (DevTools → Application → Session Storage shows
   the Supabase session key; Local Storage does not).
 
-- [ ] Step 3: Run the full automated test suite one more time
+- [ ] Step 3: Fix build/lint issues found during this task's automated
+  verification pass
+
+Two real issues surfaced only at this final stage (individual tasks only
+ran `npm run build`/`npm run test`, never `npm run lint`, and no earlier
+task's build happened to pick up the Deno file added in Task 15):
+
+1. `npm run build` fails: `tsconfig.json`'s `include: ["**/*.ts", ...]` is
+   a project-wide glob that also picks up
+   `supabase/functions/send-reminders/index.ts` — a Deno file (`Deno.*`
+   globals, `npm:` specifiers) that isn't part of the Next.js app and
+   isn't meant to type-check under this tsconfig at all (Deno type-checks
+   it separately, already proven working by its live deploy in Task 15).
+   Fix: add it to `tsconfig.json`'s `exclude`:
+   ```json
+   "exclude": ["node_modules", "supabase/functions"]
+   ```
+
+2. `npm run lint` reports 7 errors, 4 warnings:
+   - `src/app/(protected)/page.tsx:32`, `src/app/(protected)/calendar/page.tsx:23`,
+     `src/components/DebtList.tsx:22` — `react-hooks/set-state-in-effect`
+     flags the `useEffect(() => { refresh() }, [])` fetch-on-mount pattern
+     (the same pattern already has an adjacent
+     `// eslint-disable-next-line react-hooks/exhaustive-deps` for a
+     different rule). This is the standard, correct way to fetch once on
+     mount in a plain Client Component with no data-fetching library — add
+     a disable comment for this rule too, right before the `refresh()`
+     call in all three files:
+     ```tsx
+     useEffect(() => {
+       // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional fetch-on-mount, no data-fetching library in this stack
+       refresh()
+       // eslint-disable-next-line react-hooks/exhaustive-deps
+     }, [])
+     ```
+     (`DebtList.tsx`'s effect keeps its existing `}, [category])` dependency array — only add the new disable line above `refresh()`, don't touch the array.)
+   - `src/components/CalendarMonth.tsx:26` — the `useMemo` dependency
+     array calls `.getTime()` inline, which isn't a "simple expression"
+     per this lint rule. Fix: extract to local variables above the
+     `useMemo` call:
+     ```tsx
+     const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
+     const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59)
+     const monthStartMs = monthStart.getTime()
+     const monthEndMs = monthEnd.getTime()
+     // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately keyed on the primitive ms values, not object identity (monthStart/monthEnd are new Date objects every render and would defeat memoization if listed directly)
+     const occurrences = useMemo(
+       () => getOccurrencesInRange(debts, paidKeys, monthStart, monthEnd),
+       [debts, paidKeys, monthStartMs, monthEndMs],
+     )
+     ```
+   - `src/components/DebtForm.tsx` — two separate real issues in
+     `applyDictation`:
+     - A bare ternary used as a statement (`no-unused-expressions`):
+       ```tsx
+       category === 'peer' ? setPrincipalText(formatted) : setAmountText(formatted)
+       ```
+       Fix: use an if/else statement instead:
+       ```tsx
+       if (category === 'peer') setPrincipalText(formatted)
+       else setAmountText(formatted)
+       ```
+     - An unescaped `"` in JSX text (`react/no-unescaped-entities`):
+       ```tsx
+       {transcript && <p className="text-xs text-text-muted">Đã nghe: "{transcript}"</p>}
+       ```
+       Fix: escape both quote characters:
+       ```tsx
+       {transcript && <p className="text-xs text-text-muted">Đã nghe: &quot;{transcript}&quot;</p>}
+       ```
+
+Run: `npm run build` then `npm run lint`
+Expected: both exit clean, zero errors/warnings.
+
+- [ ] Step 4: Run the full automated test suite one more time
 
 Run: `npm run test`
 Expected: all tests across `money`, `schedule`, `dictation`, `dashboard`
 pass.
 
-- [ ] Step 4: Run the production build
+- [ ] Step 5: Run the production build
 
 Run: `npm run build`
 Expected: builds cleanly with no type errors.
 
-- [ ] Step 5: Report results
+- [ ] Step 6: Report results
 
 If every checklist item passes, the app is feature-complete per the spec.
 If something fails, note exactly which step and what happened — do not mark
