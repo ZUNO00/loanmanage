@@ -57,32 +57,34 @@ export function CalendarMonth({ debts, payments, onMarkPaid }: Props) {
         {cells.map((day, i) => {
           if (!day) return <div key={i} />
           const dayOccurrences = occurrencesOn(day)
-          const hasUnpaidPayable = dayOccurrences.some((o) => !o.paid && !o.occurrence.isReceivable)
-          const hasUnpaidReceivable = dayOccurrences.some((o) => !o.paid && o.occurrence.isReceivable)
-          const totalAmount = dayOccurrences.reduce((sum, o) => sum + o.occurrence.amount, 0)
           const isToday = day.toDateString() === today.toDateString()
           const isSelected = selectedDay?.toDateString() === day.toDateString()
+          const visible = dayOccurrences.slice(0, 3)
+          const hiddenCount = dayOccurrences.length - visible.length
           return (
             <button
               key={i}
               onClick={() => setSelectedDay(day)}
-              className={`aspect-square rounded-lg p-1 text-left text-[10px] ring-2 ${isSelected ? 'ring-text' : isToday ? 'ring-text-muted' : 'ring-transparent'} ${
-                hasUnpaidPayable
-                  ? 'bg-gradient-to-br from-urgent-from to-urgent-to text-white'
-                  : hasUnpaidReceivable
-                    ? 'bg-receivable text-bg'
-                    : dayOccurrences.length
-                      ? 'bg-border text-text'
-                      : 'bg-surface text-text-muted'
-              }`}
+              className={`aspect-square overflow-hidden rounded-lg bg-surface p-1 text-left text-[10px] ring-2 ${isSelected ? 'ring-text' : isToday ? 'ring-text-muted' : 'ring-transparent'}`}
             >
-              <div className="text-xs font-semibold">{day.getDate()}</div>
-              {dayOccurrences.length > 0 && (
-                <>
-                  <div className="truncate">{dayOccurrences[0].debt.name}</div>
-                  <div className="truncate">{formatMoney(totalAmount)}đ</div>
-                </>
-              )}
+              <div className="mb-0.5 text-xs font-semibold text-text">{day.getDate()}</div>
+              <div className="flex flex-col gap-0.5">
+                {visible.map((o) => (
+                  <div
+                    key={o.debt.id + o.occurrence.period}
+                    className={`truncate rounded px-1 leading-tight ${
+                      o.paid
+                        ? 'bg-border text-text-muted line-through'
+                        : o.occurrence.isReceivable
+                          ? 'bg-receivable text-bg'
+                          : 'bg-gradient-to-r from-urgent-from to-urgent-to text-white'
+                    }`}
+                  >
+                    {o.debt.name}
+                  </div>
+                ))}
+                {hiddenCount > 0 && <div className="px-1 leading-tight text-text-muted">+{hiddenCount} khác</div>}
+              </div>
             </button>
           )
         })}

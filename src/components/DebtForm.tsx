@@ -5,6 +5,13 @@ import type { Debt, DebtType, RepaymentMode } from '@/lib/types'
 import { formatMoneyInput, parseMoneyDigits } from '@/lib/money'
 import { parseDictation } from '@/lib/dictation'
 
+function seedDueDayDate(day: number | null | undefined): string {
+  if (!day) return ''
+  const now = new Date()
+  const clamped = Math.min(day, new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate())
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(clamped).padStart(2, '0')}`
+}
+
 const BANK_OPTIONS: { value: DebtType; label: string }[] = [
   { value: 'credit_card', label: 'Thẻ tín dụng' },
   { value: 'loan', label: 'Khoản vay' },
@@ -26,7 +33,7 @@ export function DebtForm({ category, initial, onSubmit, onCancel }: Props) {
   const [type, setType] = useState<DebtType>(initial?.type ?? options[0].value)
   const [name, setName] = useState(initial?.name ?? '')
   const [amountText, setAmountText] = useState(initial?.amount != null ? formatMoneyInput(String(initial.amount)) : '')
-  const [dueDay, setDueDay] = useState(initial?.due_day ? String(initial.due_day) : '')
+  const [dueDayDate, setDueDayDate] = useState(seedDueDayDate(initial?.due_day))
   const [dueTime, setDueTime] = useState(initial?.due_time?.slice(0, 5) ?? '')
   const [accountNumber, setAccountNumber] = useState(initial?.account_number ?? '')
   const [bankName, setBankName] = useState(initial?.bank_name ?? '')
@@ -83,11 +90,12 @@ export function DebtForm({ category, initial, onSubmit, onCancel }: Props) {
         type,
         name,
         amount: isPeer ? null : parseMoneyDigits(amountText),
-        due_day: repaymentMode === 'recurring' || !isPeer ? Number(dueDay) || null : null,
+        due_day: repaymentMode === 'recurring' || !isPeer ? (dueDayDate ? Number(dueDayDate.split('-')[2]) : null) : null,
         due_time: type === 'loan' || (isPeer && repaymentMode === 'recurring') ? (dueTime ? `${dueTime}:00` : null) : null,
-        account_number: accountNumber || null,
-        bank_name: bankName || null,
-        account_holder: accountHolder || null,
+        // lend_out: người khác nợ mình, không cần STK (mình là bên nhận tiền, không phải bên trả)
+        account_number: type === 'lend_out' ? null : accountNumber || null,
+        bank_name: type === 'lend_out' ? null : bankName || null,
+        account_holder: type === 'lend_out' ? null : accountHolder || null,
         counterparty_name: isPeer ? counterpartyName : null,
         principal_amount: isPeer ? parseMoneyDigits(principalText) : null,
         interest_rate_pct: isPeer ? (ratePct === '' ? null : Number(ratePct)) : null,
@@ -140,11 +148,14 @@ export function DebtForm({ category, initial, onSubmit, onCancel }: Props) {
       )}
 
       {(category === 'bank' || repaymentMode === 'recurring') && (
-        <div className="flex gap-2">
-          <input className="w-1/2 rounded-lg bg-bg px-3 py-2 text-text" type="number" min={1} max={31} placeholder="Ngày đến hạn (1-31)" value={dueDay} onChange={(e) => setDueDay(e.target.value)} required />
-          {(type === 'loan' || category === 'peer') && (
-            <input className="w-1/2 rounded-lg bg-bg px-3 py-2 text-text" type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} required={type === 'loan'} />
-          )}
+        <div>
+          <div className="flex gap-2">
+            <input className="w-1/2 rounded-lg bg-bg px-3 py-2 text-text" type="date" value={dueDayDate} onChange={(e) => setDueDayDate(e.target.value)} required />
+            {(type === 'loan' || category === 'peer') && (
+              <input className="w-1/2 rounded-lg bg-bg px-3 py-2 text-text" type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} required={type === 'loan'} />
+            )}
+          </div>
+          <p className="mt-1 text-xs text-text-muted">Chỉ lấy ngày trong tháng (lặp lại mỗi tháng vào ngày này), tháng/năm chọn không quan trọng.</p>
         </div>
       )}
 
@@ -155,9 +166,13 @@ export function DebtForm({ category, initial, onSubmit, onCancel }: Props) {
         </div>
       )}
 
-      <input className="rounded-lg bg-bg px-3 py-2 text-text" placeholder="Ngân hàng" value={bankName} onChange={(e) => setBankName(e.target.value)} />
-      <input className="rounded-lg bg-bg px-3 py-2 text-text" placeholder="Số tài khoản" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
-      <input className="rounded-lg bg-bg px-3 py-2 text-text" placeholder="Chủ tài khoản" value={accountHolder} onChange={(e) => setAccountHolder(e.target.value)} />
+      {type !== 'lend_out' && (
+        <>
+          <input className="rounded-lg bg-bg px-3 py-2 text-text" placeholder="Ngân hàng" value={bankName} onChange={(e) => setBankName(e.target.value)} />
+          <input className="rounded-lg bg-bg px-3 py-2 text-text" placeholder="Số tài khoản" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
+          <input className="rounded-lg bg-bg px-3 py-2 text-text" placeholder="Chủ tài khoản" value={accountHolder} onChange={(e) => setAccountHolder(e.target.value)} />
+        </>
+      )}
 
       {error && <p className="text-sm text-payable">{error}</p>}
       <div className="flex gap-2">
