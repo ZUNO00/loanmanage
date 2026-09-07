@@ -19,6 +19,7 @@ export function DebtList({ category }: { category: 'bank' | 'peer' }) {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional fetch-on-mount, no data-fetching library in this stack
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category])

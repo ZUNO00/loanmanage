@@ -21,9 +21,12 @@ export function CalendarMonth({ debts, payments, onMarkPaid }: Props) {
 
   const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
   const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59)
+  const monthStartMs = monthStart.getTime()
+  const monthEndMs = monthEnd.getTime()
   const occurrences = useMemo(
     () => getOccurrencesInRange(debts, paidKeys, monthStart, monthEnd),
-    [debts, paidKeys, monthStart.getTime(), monthEnd.getTime()],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- monthStart/monthEnd are new Date objects every render; monthStartMs/monthEndMs is their real value for memoization
+    [debts, paidKeys, monthStartMs, monthEndMs],
   )
 
   const leadingBlanks = (monthStart.getDay() + 6) % 7 // Monday-first

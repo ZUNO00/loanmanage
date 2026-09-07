@@ -46,7 +46,8 @@ export function DebtForm({ category, initial, onSubmit, onCancel }: Props) {
     if (parsed.type && options.some((o) => o.value === parsed.type)) setType(parsed.type)
     if (parsed.amount) {
       const formatted = formatMoneyInput(String(parsed.amount))
-      category === 'peer' ? setPrincipalText(formatted) : setAmountText(formatted)
+      if (category === 'peer') setPrincipalText(formatted)
+      else setAmountText(formatted)
     }
     if (parsed.date && category === 'peer') setDueDate(parsed.date)
     if (parsed.time) setDueTime(parsed.time)
@@ -107,7 +108,7 @@ export function DebtForm({ category, initial, onSubmit, onCancel }: Props) {
           🎤 Đọc điền nhanh
         </button>
       )}
-      {transcript && <p className="text-xs text-text-muted">Đã nghe: "{transcript}"</p>}
+      {transcript && <p className="text-xs text-text-muted">Đã nghe: &quot;{transcript}&quot;</p>}
 
       <select className="rounded-lg bg-bg px-3 py-2 text-text" value={type} onChange={(e) => setType(e.target.value as DebtType)}>
         {options.map((o) => (
