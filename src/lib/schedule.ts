@@ -62,8 +62,14 @@ export function getOccurrenceForPeriod(debt: Debt, year: number, monthIndex0: nu
 
 /** The occurrence that should currently be surfaced on the dashboard/for
  * reminders: for recurring debts, the earliest of {previous month, current
- * month} that isn't yet paid AND isn't from before the debt existed; for
- * one_time debts, the single due date if unpaid.
+ * month} that isn't yet paid; for one_time debts, the single due date if
+ * unpaid. The current month's occurrence is ALWAYS a candidate regardless
+ * of `created_at` — it's the live cycle, whether the user added tracking
+ * for it on the 1st or the 28th. `created_at` only gates the PREVIOUS
+ * month's lookback, so a debt added mid-September doesn't get told August
+ * was also overdue — August was never a cycle this record could have
+ * tracked, but September's due date, even if already past, is real and
+ * relevant the moment the debt exists.
  * ponytail: only looks back 1 month, not an unbounded scan — reminders nag
  * every 15min so nothing can silently go unpaid for a long stretch without
  * the user noticing; extend the lookback if that assumption ever breaks. */

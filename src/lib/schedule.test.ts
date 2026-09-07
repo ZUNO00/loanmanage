@@ -120,6 +120,16 @@ describe('getRelevantOccurrence', () => {
     expect(getRelevantOccurrence(baseDebt({ is_active: false }), new Set(), new Date(2026, 8, 5))).toBeNull()
   })
 
+  it('surfaces the current month even if its due day predates created_at', () => {
+    // Added Sep 15, after this cycle's Sep 9 due day already passed — the
+    // bill is still real and unpaid, so it must surface. Only the PREVIOUS
+    // month's lookback is gated by created_at, never the current month's.
+    const now = new Date(2026, 8, 20) // Sep 20
+    const debt = baseDebt({ due_day: 9, created_at: '2026-09-15T00:00:00Z' })
+    const occ = getRelevantOccurrence(debt, new Set(), now)
+    expect(occ?.period).toBe('2026-09')
+  })
+
   it('surfaces an unpaid previous month even when the current month is already paid', () => {
     const now = new Date(2026, 9, 3) // Oct 3
     const paid = new Set([paymentKey('d1', '2026-10')]) // this month paid, last month is not
