@@ -30,7 +30,12 @@ export function DebtList({ category }: { category: 'bank' | 'peer' }) {
   }
 
   async function handleToggleActive(debt: Debt) {
-    await upsertDebt(supabase, { id: debt.id, user_id: debt.user_id, is_active: !debt.is_active })
+    // Must send the full row, not just {id, user_id, is_active}: Postgres
+    // builds the candidate INSERT tuple for ON CONFLICT DO UPDATE and
+    // checks NOT NULL constraints (type, name) on it before the conflict
+    // path even kicks in, so a partial upsert missing those columns fails
+    // with a not-null violation even though the row already exists.
+    await upsertDebt(supabase, { ...debt, is_active: !debt.is_active })
     await refresh()
   }
 
