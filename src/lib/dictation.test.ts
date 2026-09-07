@@ -30,4 +30,15 @@ describe('parseDictation', () => {
     expect(result.amount).toBeUndefined()
     expect(result.date).toBeUndefined()
   })
+
+  it('parses the "củ" amount unit (worth 1,000,000)', () => {
+    expect(parseDictation('nợ 5 củ').amount).toBe(5000000)
+  })
+
+  it('does not misclassify an ordinary loan sentence that merely contains "cho" elsewhere', () => {
+    const result = parseDictation(
+      'vay ngân hàng Vietcombank 20 triệu, nhớ đừng quên trả cho đúng hẹn',
+    )
+    expect(result.type).toBe('loan')
+  })
 })

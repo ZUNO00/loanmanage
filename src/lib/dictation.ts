@@ -13,12 +13,13 @@ export function parseDictation(text: string): ParsedDictation {
   const result: ParsedDictation = {}
   const lower = text.toLowerCase()
 
+  const lendOutMatch = /\bcho\s+(?:\S+\s+){0,3}(?:vay|mượn)\b/.test(lower)
   if (lower.includes('thẻ tín dụng')) result.type = 'credit_card'
-  else if (lower.includes('cho') && (lower.includes('vay') || lower.includes('mượn'))) result.type = 'lend_out'
+  else if (lendOutMatch) result.type = 'lend_out'
   else if (lower.includes('mượn')) result.type = 'borrow_in'
   else if (lower.includes('vay') || lower.includes('nợ')) result.type = 'loan'
 
-  const amountMatch = lower.match(/(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngàn|tr|triệu|củ)\b/)
+  const amountMatch = lower.match(/(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngàn|tr|triệu|củ)(?![a-zA-ZÀ-ỹ0-9])/)
   if (amountMatch) {
     const num = Number(amountMatch[1].replace(',', '.'))
     const isThousand = amountMatch[2] === 'k' || amountMatch[2] === 'nghìn' || amountMatch[2] === 'ngàn'
