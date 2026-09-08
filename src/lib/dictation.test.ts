@@ -41,4 +41,38 @@ describe('parseDictation', () => {
     )
     expect(result.type).toBe('loan')
   })
+
+  it('resolves a day/month with no year to this year, or next year if already past', () => {
+    // These two assertions are relative to "now" — the test fixes both
+    // sides of the comparison using the same Date.now(), so it holds on
+    // any run date.
+    const future = new Date()
+    future.setDate(future.getDate() + 30)
+    const futureStr = `${String(future.getDate()).padStart(2, '0')}/${String(future.getMonth() + 1).padStart(2, '0')}`
+    const result = parseDictation(`hẹn ngày ${futureStr}`)
+    expect(result.date).toBe(
+      `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, '0')}-${String(future.getDate()).padStart(2, '0')}`,
+    )
+  })
+
+  it('parses verbose "ngày D tháng M năm Y" and "ngày D tháng M" (no year)', () => {
+    expect(parseDictation('họp ngày 20 tháng 9 năm 2027').date).toBe('2027-09-20')
+    const now = new Date()
+    const verbose = parseDictation('họp ngày 20 tháng 9')
+    const expectedYear = new Date(now.getFullYear(), 8, 20) < new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      ? now.getFullYear() + 1
+      : now.getFullYear()
+    expect(verbose.date).toBe(`${expectedYear}-09-20`)
+  })
+
+  it('resolves "hôm nay" and "ngày mai" to concrete dates', () => {
+    const today = new Date()
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    expect(parseDictation('hẹn hôm nay lúc 3h').date).toBe(todayStr)
+
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
+    expect(parseDictation('nhắc tôi ngày mai nhé').date).toBe(tomorrowStr)
+  })
 })
