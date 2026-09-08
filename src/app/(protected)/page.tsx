@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import type { Debt, DebtPayment } from '@/lib/types'
+import type { Debt, DebtPayment, Note } from '@/lib/types'
 import { listAllActiveDebts, listPayments, markPaid } from '@/lib/debts'
+import { listNotes } from '@/lib/notes'
 import { getOccurrencesInRange, paymentKey } from '@/lib/schedule'
 import { computeDashboardSummary } from '@/lib/dashboard'
 import { formatMoney } from '@/lib/money'
@@ -20,15 +21,17 @@ export default function HomePage() {
   const { session } = useAuth()
   const [debts, setDebts] = useState<Debt[]>([])
   const [payments, setPayments] = useState<DebtPayment[]>([])
+  const [notes, setNotes] = useState<Note[]>([])
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()))
   const [error, setError] = useState<string | null>(null)
   const supabase = getSupabaseClient()
 
   async function refresh() {
     try {
-      const [d, p] = await Promise.all([listAllActiveDebts(supabase), listPayments(supabase)])
+      const [d, p, n] = await Promise.all([listAllActiveDebts(supabase), listPayments(supabase), listNotes(supabase)])
       setDebts(d)
       setPayments(p)
+      setNotes(n)
     } catch {
       setError('Không tải được dữ liệu, thử tải lại trang.')
     }
@@ -48,14 +51,20 @@ export default function HomePage() {
       const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i)
       const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59)
       const hasUnpaid = getOccurrencesInRange(debts, paidKeys, date, dayEnd).some((o) => !o.paid)
-      return { date, hasUnpaid }
+      const hasNote = notes.some((n) => new Date(n.note_at).toDateString() === date.toDateString())
+      return { date, hasUnpaid, hasNote }
     })
-  }, [debts, paidKeys])
+  }, [debts, paidKeys, notes])
 
   const selectedOccurrences = useMemo(() => {
     const dayEnd = new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate(), 23, 59, 59)
     return getOccurrencesInRange(debts, paidKeys, selectedDay, dayEnd)
   }, [debts, paidKeys, selectedDay])
+
+  const selectedNotes = useMemo(
+    () => notes.filter((n) => new Date(n.note_at).toDateString() === selectedDay.toDateString()),
+    [notes, selectedDay],
+  )
 
   const summary = useMemo(() => computeDashboardSummary(debts, paidKeys), [debts, paidKeys])
 
@@ -75,7 +84,7 @@ export default function HomePage() {
         {error && <p className="text-sm text-payable">{error}</p>}
         <WeekStrip days={weekDays} selected={selectedDay} onSelect={setSelectedDay} />
         <div className="flex flex-col gap-2">
-          {selectedOccurrences.length === 0 && <p className="text-text-muted">Không có khoản nào ngày này.</p>}
+          {selectedOccurrences.length === 0 && selectedNotes.length === 0 && <p className="text-text-muted">Không có khoản nào ngày này.</p>}
           {selectedOccurrences.map(({ debt, occurrence, paid }) => (
             <div key={debt.id + occurrence.period} className="flex items-center justify-between rounded-xl bg-surface p-3">
               <div>
@@ -96,8 +105,18 @@ export default function HomePage() {
               </div>
             </div>
           ))}
+          {selectedNotes.map((note) => (
+            <div key={note.id} className="flex items-center justify-between rounded-xl bg-surface p-3">
+              <div>
+                <p className="text-text">{note.title}</p>
+                <p className="text-sm text-text-muted">
+                  {new Date(note.note_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
-        <CalendarMonth debts={debts} payments={payments} onMarkPaid={handleMarkPaid} />
+        <CalendarMonth debts={debts} payments={payments} notes={notes} onMarkPaid={handleMarkPaid} />
       </div>
       <div className="lg:sticky lg:top-4 lg:h-fit lg:w-80">
         <SummaryCards summary={summary} />
