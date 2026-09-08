@@ -11,6 +11,7 @@ const LINKS = [
   { href: '/calendar', label: 'Lịch' },
   { href: '/debts', label: 'Khoản vay' },
   { href: '/lending', label: 'Cho vay/mượn' },
+  { href: '/notes', label: 'Ghi chú' },
 ]
 
 export function TopNav() {
