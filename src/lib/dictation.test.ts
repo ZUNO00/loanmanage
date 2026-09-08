@@ -14,6 +14,14 @@ describe('parseDictation', () => {
     expect(result.type).toBe('loan')
   })
 
+  it('parses "giờ" as well as "h" for dictated times', () => {
+    expect(parseDictation('họp 3 giờ chiều').time).toBe('15:00')
+    expect(parseDictation('hẹn 15 giờ 30').time).toBe('15:30')
+    expect(parseDictation('khám bệnh 8 giờ sáng').time).toBe('08:00')
+    // the existing "h" phrasing must still work — this is a widen, not a swap
+    expect(parseDictation('lúc 4h chiều').time).toBe('16:00')
+  })
+
   it('recognizes credit card and k-unit amounts', () => {
     const result = parseDictation('thẻ tín dụng nợ 14k')
     expect(result.type).toBe('credit_card')

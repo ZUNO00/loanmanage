@@ -65,7 +65,7 @@ export function parseDictation(text: string): ParsedDictation {
     result.date = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
   }
 
-  const timeMatch = lower.match(/(\d{1,2})\s*h\s*(\d{2})?\s*(sáng|chiều|tối)?/)
+  const timeMatch = lower.match(/(\d{1,2})\s*(?:h|giờ)\s*(\d{2})?\s*(sáng|chiều|tối)?/)
   if (timeMatch) {
     let hour = Number(timeMatch[1])
     const minute = timeMatch[2] ? Number(timeMatch[2]) : 0

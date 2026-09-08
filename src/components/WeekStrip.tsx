@@ -18,7 +18,7 @@ export function WeekStrip({ days, selected, onSelect }: Props) {
             key={date.toISOString()}
             onClick={() => onSelect(date)}
             className={`flex-1 rounded-xl p-2 text-center ring-2 ${isSelected ? 'ring-text' : 'ring-transparent'} ${
-              hasUnpaid ? 'bg-gradient-to-br from-urgent-from to-urgent-to text-white' : hasNote ? 'bg-note text-white' : 'bg-surface text-text-muted'
+              hasUnpaid ? 'bg-gradient-to-br from-urgent-from to-urgent-to text-white' : hasNote ? 'bg-note text-bg' : 'bg-surface text-text-muted'
             }`}
           >
             <div className="text-[10px]">{WEEKDAY_LABELS[(date.getDay() + 6) % 7]}</div>

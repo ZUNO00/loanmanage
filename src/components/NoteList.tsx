@@ -18,6 +18,8 @@ export function NoteList() {
   const [editing, setEditing] = useState<Note | 'new' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const supabase = getSupabaseClient()
+  const [now] = useState(() => Date.now())
+  const upcomingNotes = notes.filter((n) => new Date(n.note_at).getTime() >= now)
 
   async function refresh() {
     try {
@@ -61,7 +63,7 @@ export function NoteList() {
       <button onClick={() => setEditing('new')} className="self-start rounded-xl bg-note px-4 py-2 font-semibold text-white">
         + Thêm ghi chú
       </button>
-      {notes.map((note) => (
+      {upcomingNotes.map((note) => (
         <div key={note.id} className="rounded-xl border border-border bg-surface p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -75,7 +77,7 @@ export function NoteList() {
           </div>
         </div>
       ))}
-      {notes.length === 0 && <p className="text-text-muted">Chưa có ghi chú nào.</p>}
+      {upcomingNotes.length === 0 && <p className="text-text-muted">Chưa có ghi chú sắp tới nào.</p>}
     </div>
   )
 }

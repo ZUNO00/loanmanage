@@ -2,10 +2,27 @@
 
 import { useEffect } from 'react'
 
-function playBell() {
+let sharedCtx: AudioContext | null = null
+
+function getAudioContext(): AudioContext | null {
+  if (sharedCtx) return sharedCtx
   const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-  if (!AudioContextCtor) return
-  const ctx = new AudioContextCtor()
+  if (!AudioContextCtor) return null
+  sharedCtx = new AudioContextCtor()
+  return sharedCtx
+}
+
+/** Call from a real user gesture (e.g. a button click) to unlock audio
+ * playback for the tab ahead of time — a context created with no prior
+ * gesture starts suspended and produces no sound. */
+export function primeAudioContext() {
+  getAudioContext()?.resume()
+}
+
+function playBell() {
+  const ctx = getAudioContext()
+  if (!ctx) return
+  if (ctx.state === 'suspended') ctx.resume()
   const startTime = ctx.currentTime
   ;[880, 1320].forEach((freq, i) => {
     const osc = ctx.createOscillator()

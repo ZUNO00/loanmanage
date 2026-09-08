@@ -106,7 +106,7 @@ export default function HomePage() {
             </div>
           ))}
           {selectedNotes.map((note) => (
-            <div key={note.id} className="flex items-center justify-between rounded-xl bg-surface p-3">
+            <div key={note.id} className="flex items-center justify-between rounded-xl border border-note bg-surface p-3">
               <div>
                 <p className="text-text">{note.title}</p>
                 <p className="text-sm text-text-muted">

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { subscribeToPush } from '@/lib/push'
 import { useAuth } from '@/components/AuthProvider'
+import { primeAudioContext } from '@/components/NotificationSoundListener'
 
 const LINKS = [
   { href: '/', label: 'Trang chủ' },
@@ -21,6 +22,7 @@ export function TopNav() {
 
   async function handleEnableNotifications() {
     if (!session) return
+    primeAudioContext() // this click is a real user gesture — unlocks audio for the tab
     const result = await subscribeToPush(getSupabaseClient(), session.user.id)
     if (result === 'denied') alert('Bạn đã từ chối quyền thông báo — bật lại trong cài đặt trình duyệt nếu muốn nhận nhắc.')
     if (result === 'unsupported') alert('Trình duyệt này không hỗ trợ thông báo đẩy.')

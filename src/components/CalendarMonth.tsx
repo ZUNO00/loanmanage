@@ -79,7 +79,7 @@ export function CalendarMonth({ debts, payments, notes, onMarkPaid }: Props) {
           const noteItems: Item[] = dayNotes.map((n) => ({
             key: n.id,
             label: n.title,
-            colorClass: 'bg-note text-white',
+            colorClass: 'bg-note text-bg',
           }))
           const items = [...debtItems, ...noteItems]
           const visible = items.slice(0, 3)
@@ -135,7 +135,7 @@ export function CalendarMonth({ debts, payments, notes, onMarkPaid }: Props) {
             </div>
           ))}
           {selectedNotes.map((note) => (
-            <div key={note.id} className="mb-2 rounded-lg bg-bg p-3">
+            <div key={note.id} className="mb-2 rounded-lg border border-note bg-bg p-3">
               <p className="text-text">{note.title}</p>
               <p className="text-sm text-text-muted">
                 {new Date(note.note_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}

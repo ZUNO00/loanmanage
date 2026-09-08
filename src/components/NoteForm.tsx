@@ -61,6 +61,13 @@ export function NoteForm({ initial, onSubmit, onCancel }: Props) {
         id: initial?.id,
         title,
         note_at: noteAtLocal ? new Date(noteAtLocal).toISOString() : undefined,
+        // Re-arm the reminder whenever the datetime actually changed — an
+        // upsert only touches columns present in the payload, so without
+        // this a rescheduled note keeps its old reminded_at and never
+        // gets reminded again for the new time. Omitted (undefined, which
+        // JSON.stringify drops) when unchanged, so a same-time edit
+        // doesn't disturb an already-correct reminded_at.
+        reminded_at: initial?.note_at && noteAtLocal !== toDatetimeLocal(initial.note_at) ? null : undefined,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Có lỗi xảy ra, thử lại.')
