@@ -29,3 +29,12 @@ export interface DebtPayment {
   period: string
   paid_at: string
 }
+
+export interface Note {
+  id: string
+  user_id: string
+  title: string
+  note_at: string // ISO timestamptz
+  reminded_at: string | null
+  created_at: string
+}
