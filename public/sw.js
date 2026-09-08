@@ -1,11 +1,16 @@
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {}
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Nhắc thanh toán', {
-      body: data.body || '',
-      icon: '/favicon.ico',
-      tag: data.tag || 'loanmanage-reminder',
-    }),
+    Promise.all([
+      self.registration.showNotification(data.title || 'Nhắc thanh toán', {
+        body: data.body || '',
+        icon: '/favicon.ico',
+        tag: data.tag || 'loanmanage-reminder',
+      }),
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) client.postMessage({ type: 'PLAY_REMINDER_SOUND' })
+      }),
+    ]),
   )
 })
 
