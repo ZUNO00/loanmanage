@@ -32,6 +32,14 @@ interface Debt {
   created_at: string
 }
 
+interface NoteRow {
+  id: string
+  user_id: string
+  title: string
+  note_at: string
+  reminded_at: string | null
+}
+
 function daysInMonth(year: number, monthIndex0: number) {
   return new Date(year, monthIndex0 + 1, 0).getDate()
 }
@@ -162,5 +170,33 @@ Deno.serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify({ checked: debts?.length ?? 0, sent }), { headers: { 'Content-Type': 'application/json' } })
+  const { data: notes } = await supabase.from('notes').select('*').is('reminded_at', null)
+  let notesSent = 0
+  for (const note of (notes ?? []) as NoteRow[]) {
+    const noteAt = new Date(note.note_at)
+    const threshold = noteAt.getTime() - 60 * 60 * 1000 // 1 tiếng trước
+    if (now.getTime() < threshold) continue
+
+    const { data: subs } = await supabase.from('push_subscriptions').select('*').eq('user_id', note.user_id)
+    const payload = JSON.stringify({ title: `Nhắc: ${note.title}`, body: '', tag: `note-${note.id}` })
+
+    for (const sub of subs ?? []) {
+      try {
+        await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload)
+        notesSent++
+      } catch (err) {
+        const statusCode = (err as { statusCode?: number }).statusCode
+        if (statusCode === 404 || statusCode === 410) {
+          await supabase.from('push_subscriptions').delete().eq('id', sub.id)
+        }
+      }
+    }
+
+    await supabase.from('notes').update({ reminded_at: now.toISOString() }).eq('id', note.id)
+  }
+
+  return new Response(
+    JSON.stringify({ checked: debts?.length ?? 0, sent, notesChecked: notes?.length ?? 0, notesSent }),
+    { headers: { 'Content-Type': 'application/json' } },
+  )
 })
