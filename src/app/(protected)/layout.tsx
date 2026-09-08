@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
 import { TopNav } from '@/components/TopNav'
+import { IosInstallHint } from '@/components/IosInstallHint'
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
@@ -18,6 +19,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen">
       <TopNav />
+      <IosInstallHint />
       <main className="mx-auto max-w-6xl p-4 lg:flex lg:gap-6">{children}</main>
     </div>
   )
