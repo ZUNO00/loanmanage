@@ -75,4 +75,11 @@ describe('parseDictation', () => {
     const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
     expect(parseDictation('nhắc tôi ngày mai nhé').date).toBe(tomorrowStr)
   })
+
+  it('does not let an amount range like "5-6 triệu" hijack a "ngày mai" reminder', () => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
+    expect(parseDictation('vay 5-6 triệu, hẹn trả ngày mai').date).toBe(tomorrowStr)
+  })
 })

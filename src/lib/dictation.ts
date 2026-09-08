@@ -39,7 +39,11 @@ export function parseDictation(text: string): ParsedDictation {
 
   const fullDateMatch = text.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
   const verboseDateMatch = lower.match(/ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})(?:\s+năm\s+(\d{4}))?/)
-  const shortDateMatch = text.match(/(\d{1,2})[/-](\d{1,2})(?!\d)/)
+  // Requires a preceding "ngày" — a bare D[/-]M pattern anywhere in the
+  // sentence would collide with an amount range like "5-6 triệu" and
+  // silently produce a fabricated date instead of falling through to the
+  // (correct) "ngày mai"/"hôm nay" checks below.
+  const shortDateMatch = lower.match(/ngày\s+(\d{1,2})[/-](\d{1,2})(?!\d)/)
 
   if (fullDateMatch) {
     const [, d, m, y] = fullDateMatch
