@@ -212,6 +212,13 @@ Add these test cases to `src/lib/dictation.test.ts`, inside the existing
     const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
     expect(parseDictation('nhắc tôi ngày mai nhé').date).toBe(tomorrowStr)
   })
+
+  it('does not let an amount range like "5-6 triệu" hijack a "ngày mai" reminder', () => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
+    expect(parseDictation('vay 5-6 triệu, hẹn trả ngày mai').date).toBe(tomorrowStr)
+  })
 ```
 
 - [ ] Step 2: Run to verify it fails
@@ -237,7 +244,11 @@ with:
 ```ts
   const fullDateMatch = text.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
   const verboseDateMatch = lower.match(/ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})(?:\s+năm\s+(\d{4}))?/)
-  const shortDateMatch = text.match(/(\d{1,2})[/-](\d{1,2})(?!\d)/)
+  // Requires a preceding "ngày" — a bare D[/-]M pattern anywhere in the
+  // sentence would collide with an amount range like "5-6 triệu" and
+  // silently produce a fabricated date instead of falling through to the
+  // (correct) "ngày mai"/"hôm nay" checks below.
+  const shortDateMatch = lower.match(/ngày\s+(\d{1,2})[/-](\d{1,2})(?!\d)/)
 
   if (fullDateMatch) {
     const [, d, m, y] = fullDateMatch
@@ -1058,10 +1069,12 @@ before the final `return new Response(...)` statement, add:
     const { data: subs } = await supabase.from('push_subscriptions').select('*').eq('user_id', note.user_id)
     const payload = JSON.stringify({ title: `Nhắc: ${note.title}`, body: '', tag: `note-${note.id}` })
 
+    let anySendSucceeded = false
     for (const sub of subs ?? []) {
       try {
         await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload)
         notesSent++
+        anySendSucceeded = true
       } catch (err) {
         const statusCode = (err as { statusCode?: number }).statusCode
         if (statusCode === 404 || statusCode === 410) {
@@ -1070,7 +1083,14 @@ before the final `return new Response(...)` statement, add:
       }
     }
 
-    await supabase.from('notes').update({ reminded_at: now.toISOString() }).eq('id', note.id)
+    // Only stamp reminded_at once something actually went out (or there was
+    // nothing to send to at all) — a transient webpush failure with
+    // subscriptions present should retry on the next cron tick (≤15 min
+    // later) rather than silently and permanently losing this note's one
+    // and only reminder.
+    if (anySendSucceeded || (subs ?? []).length === 0) {
+      await supabase.from('notes').update({ reminded_at: now.toISOString() }).eq('id', note.id)
+    }
   }
 ```
 
