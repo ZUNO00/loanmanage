@@ -180,10 +180,12 @@ Deno.serve(async (req) => {
     const { data: subs } = await supabase.from('push_subscriptions').select('*').eq('user_id', note.user_id)
     const payload = JSON.stringify({ title: `Nhắc: ${note.title}`, body: '', tag: `note-${note.id}` })
 
+    let anySendSucceeded = false
     for (const sub of subs ?? []) {
       try {
         await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload)
         notesSent++
+        anySendSucceeded = true
       } catch (err) {
         const statusCode = (err as { statusCode?: number }).statusCode
         if (statusCode === 404 || statusCode === 410) {
@@ -192,7 +194,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    await supabase.from('notes').update({ reminded_at: now.toISOString() }).eq('id', note.id)
+    // Only stamp reminded_at once something actually went out (or there was
+    // nothing to send to at all) — a transient webpush failure with
+    // subscriptions present should retry on the next cron tick (≤15 min
+    // later) rather than silently and permanently losing this note's one
+    // and only reminder.
+    if (anySendSucceeded || (subs ?? []).length === 0) {
+      await supabase.from('notes').update({ reminded_at: now.toISOString() }).eq('id', note.id)
+    }
   }
 
   return new Response(
